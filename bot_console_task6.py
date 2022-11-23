@@ -82,10 +82,11 @@ class Bot:
         features = self.cv.get_feature_names_out()
         return pd.DataFrame(X, columns=features)
 
-bot = Bot('dialog_talk_agent.xlsx')
-question = ''
-while question != 'q':
-    print('Ask me:')
-    question = input()
-    print()
-    print(bot.answer(question, False))
+if __name__ == "__main__":
+    bot = Bot('dialog_talk_agent.xlsx')
+    question = ''
+    while question != 'q':
+        print('Ask me:')
+        question = input()
+        print()
+        print(bot.answer(question, False))
