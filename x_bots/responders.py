@@ -2,35 +2,54 @@ import pandas as pd
 import re
 import nltk
 import sklearn
-import numpy as np
 
-class Bot:
+# Пример интерфейса для ответчика
+class IResponder:
+    # df - датафрейм, имеющий колонки 'Context' и 'Text Response'
+    def prepare(self, df):
+        pass
+
+    # question - любой вопрос в виде строки
+    # возвращает (ответ, вероятность)
+    def answer(self, question):
+        return ""
+    
+
+# Стандартный ответчик на основе nltk и sklearn
+class DefaultResponder(IResponder):
     _stopwords = nltk.corpus.stopwords.words('english')
 
-    def __init__(self, file):
+    def __init__(self, use_cosine = True):
+        self.use_cosine = use_cosine
+   
+    def prepare(self, df):
         self.cv = sklearn.feature_extraction.text.CountVectorizer()
 
-        df = pd.read_excel(file)
         df.ffill(axis=0, inplace=True)
-        df['Context'] = df['Context'].apply(Bot._prepare_sentence)
-        df['Context'] = df['Context'].apply(Bot._normalize_sentence)
-        df['Context'] = df['Context'].apply(Bot._remove_stops)
+        df['Context'] = df['Context'].apply(DefaultResponder._prepare_sentence)
+        df['Context'] = df['Context'].apply(DefaultResponder._normalize_sentence)
+        df['Context'] = df['Context'].apply(DefaultResponder._remove_stops)
 
         self.df = df
         self.df_bow = self._make_vectors(df['Context'])
+    
 
-
-    def answer(self, question, use_cosine = True):
-        question = Bot._prepare_sentence(question)
-        question = Bot._normalize_sentence(question)
-        question = Bot._remove_stops(question)
+    def answer(self, question):
+        question = DefaultResponder._prepare_sentence(question)
+        question = DefaultResponder._normalize_sentence(question)
+        question = DefaultResponder._remove_stops(question)
 
         Q_bow = self.cv.transform([question]).toarray()
-        if use_cosine:
+        ans_prob = 1
+        
+        # считаем косинусное расстояние
+        if self.use_cosine:
             cosine_value = 1 - sklearn.metrics.pairwise_distances(self.df_bow, Q_bow, metric='cosine')
             ans_ind = cosine_value.argmax()
+            ans_prob = cosine_value[cosine_value.argmax()]
+
+         # выбираем по наибольшему количеству совпадающих слов
         else:
-            # количество совпадений слов
             dif = self.df_bow & (self.df_bow == Q_bow)
             dif = dif.sum(axis=1)
 
@@ -40,7 +59,7 @@ class Bot:
             ans_ind = dif.argmax()
             
         ans = self.df['Text Response'].loc[ans_ind]
-        return ans
+        return ans, ans_prob
 
     def _prepare_sentence(sent):
         sent = str(sent).lower()
@@ -54,7 +73,7 @@ class Bot:
         lemm = nltk.WordNetLemmatizer()
 
         for word, tag in tags:
-            pos_val = Bot._convert_ps(tag)
+            pos_val = DefaultResponder._convert_ps(tag)
             lemm_token = lemm.lemmatize(word, pos_val)
             lem_list.append(lemm_token)
 
@@ -62,7 +81,7 @@ class Bot:
     
     def _remove_stops(sent):
         tokens = nltk.word_tokenize(sent)
-        tokens = [t for t in tokens if t not in Bot._stopwords]
+        tokens = [t for t in tokens if t not in DefaultResponder._stopwords]
         return ' '.join(tokens)
 
     def _convert_ps(ps):
@@ -82,11 +101,3 @@ class Bot:
         features = self.cv.get_feature_names_out()
         return pd.DataFrame(X, columns=features)
 
-if __name__ == "__main__":
-    bot = Bot('dialog_talk_agent.xlsx')
-    question = ''
-    while question != 'q':
-        print('Ask me:')
-        question = input()
-        print()
-        print(bot.answer(question, False))
